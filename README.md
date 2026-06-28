@@ -1,127 +1,154 @@
-# claude-code-arsenal
+# Souza & Cia. — AI Workforce
 
-Six specialized Claude Code subagents for daily engineering work. Each one is read-only by default unless the job requires write access, and each one has a sharp scope so the main session can delegate without losing context.
+Uma agência multi-agente rodando 100% local, com dashboard ao vivo.
+Sem chamadas pra OpenAI/Anthropic. Tudo no seu hardware.
 
-## The six
+## O que está no pacote
 
-| Agent | Job | Tools | Model | Read/Write |
-|---|---|---|---|---|
-| `architect` | Map the codebase, surface boundary violations, propose ADRs | Read, Grep, Glob | sonnet | Read-only |
-| `security-auditor` | Sweep for secrets, IAM, OWASP patterns, vulnerable deps | Read, Grep, Glob, Bash | sonnet | Read-only |
-| `cost-sentinel` | Flag patterns that become expensive at production scale | Read, Grep, Glob | sonnet | Read-only |
-| `test-fixer` | Diagnose and repair failing tests with the minimal change | Read, Edit, Bash, Grep, Glob | sonnet | Read-write |
-| `dependency-detective` | Audit dependencies for vulns, staleness, redundancy, licenses | Read, Grep, Glob, Bash | sonnet | Read-only |
-| `commit-curator` | Draft a Conventional Commits message from staged changes | Read, Bash | haiku | Read-only |
+| Arquivo                          | O que é                                          |
+|----------------------------------|--------------------------------------------------|
+| `souza-agency-dashboard.html`    | Dashboard standalone (simulação visual)         |
+| `souza_agency.py`                | Backend CrewAI + FastAPI + SSE com Ollama       |
 
-## See it work in 5 minutes
+## Stack alvo
 
-The `demo/` folder has a small flawed FastAPI project (`pyorders`) seeded with one or more issues per agent. Run the demo end to end:
+Pensado pro teu setup:
+- **HP EliteDesk G4-800** → control plane / FastAPI server
+- **RTX 4070 Ti** → Ollama servindo `qwen2.5:14b`, `llama3.1:8b`, `mistral:7b`
+- **MacBook Air M2** → cliente / dashboard no navegador
+- (Os Raspberry Pis ficam de fora — agentes de LLM ainda são pesados pra ARM)
 
-```bash
-git clone https://github.com/thespamer/claude-code-arsenal
-cd claude-code-arsenal
-./demo/run-demo.sh setup       # installs agents user-level, sets up venv, inits git
-cd demo/pyorders
-claude                          # start Claude Code
-```
+## Modo 1 — Só ver a UI rodando (sem backend)
 
-Then paste these prompts in order:
+Abre `souza-agency-dashboard.html` no navegador. O script de demo simula
+4 agentes trabalhando num projeto real (estratégia de canal no YouTube
+sobre IA local). Útil pra mostrar em entrevistas — você prova que entendeu
+o pattern sem precisar do hardware ligado.
 
-```
-> use the architect to review the structure of this project
-> use the security-auditor to sweep this codebase
-> use the cost-sentinel on this codebase
-> use the test-fixer on tests/test_billing.py::test_apply_discount_ten_percent_applied_to_subtotal_only
-> use the dependency-detective on requirements.txt
-> use the commit-curator on my staged changes
-```
+Funciona inclusive no celular. O layout colapsa pra coluna única.
 
-Each agent produces a real, specific finding (SQL injection in three places, N+1 against a paid API, a `requests==2.18.0` CVE, a real bug in `apply_discount`, etc). Full expected outputs and the rationale for each finding are in [`demo/DEMO.md`](demo/DEMO.md).
+## Modo 2 — Rodar a coisa de verdade
 
-The `demo/pyorders/README.md` lists every seeded issue with its file and line so you can verify the agents catch what they should.
-
-## Install
-
-### User-level (available in every project)
+### 1. Ollama com os modelos
 
 ```bash
-mkdir -p ~/.claude/agents
-cp agents/*.md ~/.claude/agents/
+# Na máquina com a RTX 4070 Ti
+ollama serve                                          # se ainda não tá rodando
+ollama pull qwen2.5:14b      # raciocínio (Marina, Camila, gerente)
+ollama pull llama3.1:8b      # executivos (Rafael, Helena)
+ollama pull mistral:7b       # criativo (Bruno)
 ```
 
-### Project-level (versioned with the repo)
+Se o Ollama está em outra máquina da rede, exporta antes de subir o servidor:
 
 ```bash
-mkdir -p .claude/agents
-cp agents/*.md .claude/agents/
-git add .claude/agents
+export OLLAMA_HOST=http://192.168.0.42:11434
 ```
 
-Project-level takes precedence over user-level when names collide.
+### 2. Backend Python
 
-## Verify
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install crewai 'crewai-tools[all]' fastapi 'uvicorn[standard]' \
+            sse-starlette langchain-ollama
 
-Open Claude Code in any project and run:
-
-```
-/agents
-```
-
-You should see all six listed under either Personal or Project scope.
-
-## Use
-
-Claude Code routes to subagents automatically based on the `description` field. You can also invoke them explicitly:
-
-```
-> use the architect to review the overall structure of this repo
-> use the security-auditor to sweep this codebase before the release
-> use the cost-sentinel on services/billing.py before we ship
-> use the test-fixer on tests/test_pricing.py::test_discount_applied
-> use the dependency-detective on package.json
-> use the commit-curator on my staged changes
+uvicorn souza_agency:app --host 0.0.0.0 --port 8765 --reload
 ```
 
-The `commit-curator` is the one you will invoke most often. The others fire when their description matches what you are doing.
+Testa:
 
-## Design principles
-
-- **Read-only by default.** Four of six cannot write to the filesystem. They report findings; humans take action.
-- **One agent, one job.** No agent crosses categories. If a job needs three perspectives, run three agents.
-- **Minimal blast radius.** `test-fixer` is the only one that edits code, and it refuses to touch more than three files.
-- **No fabricated findings.** Every output points at a file and a line. CVE numbers, version numbers, and dollar figures come from real tools or are flagged as estimates with stated assumptions.
-- **Honest stop conditions.** If the codebase is too small, the diff is empty, or the change is too large, the agent stops instead of guessing.
-
-## Repository layout
-
-```
-claude-code-arsenal/
-├── README.md
-├── LICENSE
-├── PUBLISH.md
-├── LINKEDIN.md
-├── agents/
-│   ├── architect.md
-│   ├── commit-curator.md
-│   ├── cost-sentinel.md
-│   ├── dependency-detective.md
-│   ├── security-auditor.md
-│   └── test-fixer.md
-└── demo/
-    ├── DEMO.md                 # full walkthrough with expected outputs
-    ├── run-demo.sh             # setup script + prompt list
-    ├── sample-staged-diff.md   # captured diff that triggers curator refusal
-    └── pyorders/               # the deliberately flawed FastAPI demo project
-        ├── README.md
-        ├── requirements.txt
-        ├── src/
-        └── tests/
+```bash
+curl http://localhost:8765/health
 ```
 
-## Contributing
+### 3. Disparar um run
 
-Open an issue describing a real situation where one of the agents missed, over-fired, or gave a bad recommendation. Include the diff or the prompt that produced it. PRs welcome on the subagent markdown itself.
+```bash
+curl -X POST http://localhost:8765/run \
+  -H "Content-Type: application/json" \
+  -d '{"brief":"Estratégia de canal no YouTube sobre IA local para CTOs"}'
 
-## License
+# resposta: {"run_id":"a1b2c3d4e5f6"}
+```
 
-Apache License 2.0. See `LICENSE`.
+### 4. Consumir o stream (CLI rápido)
+
+```bash
+curl -N http://localhost:8765/stream/a1b2c3d4e5f6
+```
+
+Você vai ver SSE assim:
+
+```
+event: delegate
+data: {"agent":"marina","msg":"Brief recebido...","thought":"..."}
+
+event: think
+data: {"agent":"rafael","msg":"Buscando trends..."}
+
+event: deliver
+data: {"agent":"rafael","output":{"title":"Mapa de demanda",...}}
+```
+
+## Conectar o dashboard ao backend real
+
+O HTML standalone roda só a simulação. Pra conectar no backend de verdade,
+substitua o `run()` no `<script>` do HTML por algo como:
+
+```javascript
+async function run() {
+  state.running = true;
+  clearStream();
+  startClock();
+
+  const res = await fetch('http://localhost:8765/run', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ brief: $('#brief-input').value }),
+  });
+  const { run_id } = await res.json();
+
+  const es = new EventSource(`http://localhost:8765/stream/${run_id}`);
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.kind === 'delegate' || ev.kind === 'think' || ev.kind === 'review') {
+      setAgentState(ev.agent, 'working');
+    }
+    appendEvent({
+      agent: ev.agent, tag: ev.kind,
+      head: ev.head, msg: ev.msg, thought: ev.thought,
+    }, state.events);
+    if (ev.output) appendOutput(ev.output);
+    if (ev.final) { es.close(); finish(); }
+  };
+}
+```
+
+## Por que essa arquitetura
+
+- **`Process.hierarchical` no CrewAI**: a Marina é gerente — ela decide quem
+  faz o quê e quando, em vez de pipeline fixo. Isso espelha como uma agência
+  real opera.
+- **Modelos diferentes por papel**: você não precisa do Qwen 14B pra revisar
+  texto. Usar Llama 8B em papéis executivos libera VRAM e acelera o run.
+  Roteamento explícito no `LLMS = {...}`.
+- **SSE em vez de WebSocket**: SSE é mais simples, suficiente pra
+  unidirecional (servidor → dashboard), e atravessa proxies/CDNs sem drama.
+- **`step_callback` + `callback` de Task**: o CrewAI emite hooks em cada
+  passo de raciocínio e no fim de cada task. Isso é o que alimenta o
+  "pensamento ao vivo" no dashboard.
+
+## Próximos passos óbvios
+
+1. **Tools reais**: troca os stubs de `web_search` por SearxNG self-hosted
+   (já que tu valoriza não depender de API externa).
+2. **Memória persistente**: CrewAI suporta `memory=True` na Crew, usando
+   ChromaDB local. Roda no homelab K8s sem drama.
+3. **Observabilidade**: plugar Langfuse self-hosted pra rastrear cada chamada
+   de LLM, custo (se um dia for híbrido), latência por agente. Vale pra
+   teu portfolio de CTO.
+4. **Multi-tenant**: trocar a `EventBus` em memória por Redis pub/sub, e o
+   dicionário de runs por Postgres. Aí escala pra mais de um cliente.
+5. **K8s deploy**: empacotar `souza_agency.py` em container, deployar no teu
+   cluster com Istio (já que você instalou recentemente). Boa oportunidade
+   de validar mTLS entre o gateway e o serviço.
