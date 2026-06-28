@@ -139,6 +139,24 @@ Two things worth noting in that screenshot:
 Blocking items: parameterized queries, JWT verification, secret rotation.
 ```
 
+**Real output from an actual run** (Sonnet 4.6, 3m 35s):
+
+![security-auditor results — 18 findings across 4 severity buckets](screenshots/security-auditor-results.png)
+
+The actual agent run was more thorough than the predicted shape above. It found:
+
+- **5 critical** (4× SQL injection — including `db.py:14,20` which the prediction missed — plus full JWT bypass)
+- **8 high** including two that were not in the seeded-issue table:
+  - `app.py:38` — JWT passed as a query parameter, which leaks into request logs, proxy access logs, and browser history
+  - `requirements.txt` finding includes specific CVE classifications (`requests==2.18.0` flagged as SSRF, `pyyaml==3.13` as RCE)
+- **3 medium** caught what the prediction missed entirely:
+  - `auth.py:21` — JWT issued without an `exp` claim, so tokens never expire
+  - `pyjwt==1.5.3` — the agent identified an upgrade ordering dependency: pyjwt must be bumped to 2.x **before** re-enabling signature verification, otherwise the fix introduces a different break
+- **2 low** for supply chain hygiene
+- **Agent config sweep** — the auditor also checked `agents/*.md` and `run-demo.sh` for secrets or injection vectors, found none. The agent verified its own tooling, not just the target codebase.
+
+> **Meta moment:** the upper portion of the screenshot shows the `architect` agent finishing a parallel review of the entire arsenal repo (not just `demo/pyorders/`). With the "Out of scope" section now in `agents/architect.md`, it correctly stayed within architectural concerns and surfaced six meta-findings about the arsenal itself, the top one being a real overlap: `security-auditor` Pass 5 and `dependency-detective` both run CVE scanners, producing duplicate findings. That overlap is on the list to fix in v1.1.
+
 ---
 
 ## 3. cost-sentinel
