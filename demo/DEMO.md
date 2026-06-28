@@ -48,6 +48,12 @@ Total surface area: about 130 lines of Python. Small enough to read in two minut
 > use the architect to review the structure of this project
 ```
 
+**Real output from an actual run** (Claude Code v2.1.195, Sonnet 4.6):
+
+![architect agent output](screenshots/architect-output.png)
+
+The agent finished in 1m 28s and returned 12 findings organized by severity, plus an "architecture shape" summary at the bottom identifying the layering breakdown (`app.py ignores db.py`, `billing imports from auth`). Note the agent crosses scope slightly — items 1-4 and 11 properly belong to `security-auditor` and `dependency-detective`. That cross-coverage is expected when running agents individually; the other agents will reconfirm those findings in their own runs.
+
 **What it finds:**
 
 - `src/app.py` imports `psycopg2` and runs raw SQL directly from HTTP handlers. The web layer is talking to the database. There is no service layer, no repository, no domain model.
@@ -87,6 +93,15 @@ read this as "a script with HTTP routes," not as a service.
 ```
 > use the security-auditor to sweep this codebase
 ```
+
+**Tip — parallel execution.** Subagents run as background tasks in Claude Code, so you can dispatch the next one without waiting for the previous to finish. Below, `architect` and `security-auditor` are running concurrently, and the security-auditor has started its first pass with the credentials-grep from its system prompt:
+
+![architect and security-auditor running in parallel](screenshots/security-auditor-parallel.png)
+
+Two things worth noting in that screenshot:
+
+1. The grep regex (`(api[_-]?key|apikey|secret|token|password|passwd|pwd)\s*[:=]\s*["'][^"']{8,}["']`) is the one defined in `agents/security-auditor.md` under Pass 1. The agent is executing the spec from its system prompt verbatim.
+2. Claude Code prompts you to approve the Bash command before it runs. This is the built-in approval flow for subagent tool use, not a special feature of this arsenal. Useful guardrail — you see what the agent wants to do before it does it.
 
 **What it finds:**
 
