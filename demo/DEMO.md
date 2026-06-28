@@ -262,6 +262,26 @@ The fix diff the agent applies will look like:
 +    return discounted_subtotal + tax
 ```
 
+**Real output from an actual run** (Sonnet 4.6, 3m 29s):
+
+![test-fixer results — stacked env blocker + real bug, both resolved](screenshots/test-fixer-results.png)
+
+This run is the most instructive of the demo because the agent encountered **two stacked failures** and worked through them in order rather than blocking on the first.
+
+1. **Issue 1 — environmental blocker.** `pyjwt` and `psycopg2-binary` were declared in `requirements.txt` but not installed in the active environment, so pytest failed at collection time with `ModuleNotFoundError` before any assertion ran. The agent recognized this matches bucket 5 (Environmental) from its system prompt — "missing env var, missing service, wrong version. Document the prerequisite." It installed the missing packages and re-ran.
+
+2. **Issue 2 — real bug in production code.** With the environment fixed, the actual assertion failure surfaced: `99.0 != 100.0`. The agent classified as bucket 1 (real bug), changed two lines in `src/billing.py`, and verified both tests pass:
+
+   ```diff
+   -    total = subtotal + tax
+   -    return total * (1 - discount_pct / 100)
+   +    return subtotal * (1 - discount_pct / 100) + tax
+   ```
+
+   The arithmetic check at the bottom of the screenshot — `100 * 0.9 + 10 = 100.0 ✓ vs old 110 * 0.9 = 99.0 ✗` — is the kind of concrete verification that prevents the agent from declaring success while the test is still broken in a different way.
+
+**What this validates about the agent design.** The six-bucket classification in `agents/test-fixer.md` (Real bug / Stale test / Flaky / Pollution / Environmental / Wrong assertion) is not just diagnostic structure on paper — it lets the agent recognize compound failures and address them in order. A less structured prompt would have either (a) reported "test fails at collection, environment broken, cannot proceed" and stopped, or (b) jumped straight to editing `apply_discount` without first making the test runnable.
+
 ---
 
 ## 5. dependency-detective
