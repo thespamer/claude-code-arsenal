@@ -371,6 +371,26 @@ Sequence: remove unused first (django, pyyaml, numpy, flask), then upgrade reque
 then plan pyjwt 2.x migration.
 ```
 
+**Real output from an actual run** (Sonnet 4.6, 1m 22s):
+
+![dependency-detective results — tabulated security findings + ROI-ranked recommendations](screenshots/dependency-detective-results.png)
+
+This run produced four things worth noting:
+
+1. **The agent picked a tabular layout for Security findings on its own.** The system prompt asks for a bullet list. The model chose `Package | Version | Issue | Severity` columns because a four-column matrix reads better than five separate bullets when comparing across rows. The prompt is followed in spirit (file:line equivalent = package@version, severity classification, fix path) but the format was upgraded by the model. Worth keeping rather than fighting.
+
+2. **CVE coverage was deeper than predicted.** Beyond the seeded CVEs:
+   - `requests==2.18.0` — adds **CVE-2023-32681** (proxy credential leak) on top of the predicted CVE-2018-18074
+   - `pyjwt==1.5.3` — surfaces **CVE-2022-29217** (signature bypass via embedded public key), classified as High. This directly connects to the `verify_signature: False` in `auth.py`.
+   - `pyyaml==3.13` classified as **Critical** (RCE), not just "vulnerable"
+   - `django==1.11.29` classified as **Critical** (EOL, dozens of unpatched CVEs)
+
+3. **Cross-agent convergence on upgrade ordering.** Recommendation #3 reads: *"Upgrade pyjwt to 2.13.0 — breaking 1.x→2.x API; requires fixing `verify_signature: False` in auth.py (already broken anyway)"*. This is the same ordering insight the `security-auditor` produced in its run (pyjwt 1.x → 2.x must come before re-enabling signature check). Two independent agent runs converged on the same chained fix sequence, which is a useful signal that the insight is real rather than an artifact of one prompt.
+
+4. **ROI-ranked sequence as the final output.** The "Recommended sequence" at the end mirrors the structural pattern from cost-sentinel: smallest-cost intervention first (remove 4 unused packages → eliminates 3/4 of security findings at zero migration cost), then ordered by blast radius. Three of the six agents in this arsenal end with an ROI ranking; the pattern is intentional.
+
+**One small miss to fix in v1.1.** The agent did not classify `flask==0.10.1` as redundant with `fastapi` (the seeded "redundancy" issue from `pyorders/README.md`). It correctly identified flask as unused, but the framing was "remove because not imported" rather than "remove because fastapi already covers this role". The system prompt has a "Redundancy" section that the model did not trigger — likely because the unused check fired first. Worth tightening the prompt to detect redundancy independent of import status.
+
 ---
 
 ## 6. commit-curator
