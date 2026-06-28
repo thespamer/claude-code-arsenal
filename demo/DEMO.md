@@ -195,6 +195,23 @@ The actual agent run was more thorough than the predicted shape above. It found:
 Top three interventions: batch payment calls, paginate admin queries, JOIN items.
 ```
 
+**Real output from an actual run** (Sonnet 4.6, 1m 58s):
+
+![cost-sentinel results — itemized cost analysis with stated assumptions](screenshots/cost-sentinel-results.png)
+
+This was the cleanest agent output in the demo. Three things worth calling out:
+
+1. **Every dollar figure carries an assumption.** "$0.005/call × 10k calls/hr = ~$36/day", "~500MB egress per call at 1M rows → $324/mo", "$60 → $185/mo instance upgrade at 50 RPS". The guardrail in `agents/cost-sentinel.md` ("never quote a precise dollar figure without stating the assumption") was followed without exception.
+
+2. **The agent stayed in scope without an explicit "Out of scope" block.** No security findings, no architecture commentary, no dependency review (except where unused deps create real cost — Lambda cold-start image bloat).
+
+3. **Three high-impact findings were not in the seeded-issue table:**
+   - **`app.py:17,29,41 + db.py:12`** — `psycopg2.connect()` per request, zero connection pooling. Saturates DB at 50 RPS, forces instance upgrade. This is a classic anti-pattern that does not show up in a "what's broken" checklist because the code looks normal in isolation.
+   - **`db.py:14`** — missing `WHERE status = 'pending'` filter compounds with the N+1: the loop loads all historical orders for the user, then sends every one of them through the paid payment API. The agent identified a compounding cost chain across two files.
+   - **`numpy + flask` unused → image bloat → Lambda cold-start cost.** A different cost model entirely from the API and DB findings, and the agent surfaced it.
+
+4. **The ROI ranking at the end** ordered interventions by code-change cost vs cost savings: connection pool first (smallest change, biggest impact), filter + batch second (collapses the unbounded chain), indexes + projection third (prevents scaling problems). That ordering is exactly the kind of judgment the system prompt asks for, and it would be hard to produce by pattern-matching alone.
+
 ---
 
 ## 4. test-fixer
