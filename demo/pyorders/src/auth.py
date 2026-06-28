@@ -19,3 +19,4 @@ def verify_token(token: str) -> bool:
 
 def issue_token(user_id: str) -> str:
     return jwt.encode({"sub": user_id}, JWT_SECRET, algorithm="HS256")
+# trailing comment

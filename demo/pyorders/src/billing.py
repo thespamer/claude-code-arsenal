@@ -35,5 +35,4 @@ def apply_discount(subtotal: float, tax: float, discount_pct: float) -> float:
     then tax added on top. Current implementation discounts the tax as well,
     which understates the tax owed and breaks reconciliation.
     """
-    total = subtotal + tax
-    return total * (1 - discount_pct / 100)
+    return subtotal * (1 - discount_pct / 100) + tax

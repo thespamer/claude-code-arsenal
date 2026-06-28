@@ -460,6 +460,44 @@ Run the curator again after each split.
 
 See `demo/sample-staged-diff.md` for the captured diff that triggers Flow B.
 
+**Real output from a Flow B run** (Sonnet 4.6 via Haiku model, 13s):
+
+![commit-curator Flow B — refused to bundle, proposed split, but with state confusion](screenshots/commit-curator-flowB.png)
+
+This run is the most useful one to study because it shows **what worked, what did not, and where the agent design needs tightening**.
+
+The stage at the time of invocation was:
+
+```
+modified:   README.md
+modified:   src/auth.py
+```
+
+`README.md` had a new "Running locally" section appended. `src/auth.py` had a `# trailing comment` line appended in a different file domain.
+
+**What the agent got right:**
+
+- Detected that the staging area contained unrelated changes and refused to author a single bundled commit
+- Returned concrete `git restore --staged ...` + `git commit -m ...` commands rather than abstract advice
+- Format and tone of the proposed commit message (`fix(billing): apply discount to subtotal only`) followed the Conventional Commits rules in the system prompt
+- Ended with "Want me to do that?" rather than executing — respected the guardrail "never run `git commit`. You draft, the human commits."
+- Returned in 13 seconds using the Haiku model, which matches the system prompt model assignment
+
+**What the agent got wrong:**
+
+The actual staged files were `README.md` and `src/auth.py`. The agent's report named `billing.py` and `auth.py`, where `billing.py` was the **previous commit** (already in HEAD), not part of the current staging area. `README.md`, which was actually staged, was omitted from the report.
+
+The most likely cause is a working-directory mismatch. The path reported in the recommendation reads `demo/pyorders/src/auth.py`, which is the path from the **outer** arsenal repo root, not from inside `demo/pyorders/` where the user invoked Claude Code. The agent appears to have run `git` commands from the outer repo, where neither `README.md` nor `src/auth.py` was staged — the outer working tree only sees those files as modified. The agent then conflated the staged file (`auth.py`) with the most recent commit (`billing.py`).
+
+A secondary possibility is that the agent read `git log` or `git diff HEAD` in addition to `git diff --cached` and mixed the two scopes when describing the staging area.
+
+**v1.1 fix.** The system prompt in `agents/commit-curator.md` needs two tightenings:
+
+1. Explicit `cd` to the git repo root before any git invocation, using `git rev-parse --show-toplevel` to resolve the location of `.git/` in case of nested repositories.
+2. Explicit scoping: only `git diff --cached` and `git status --short` count. `git log` is off-limits when describing the current commit candidate. Recent commits are history, not state.
+
+**What this run still proves.** The most important guardrail — "never bundle unrelated changes into one commit" — held. The agent refused to author a single commit and demanded a split. The state confusion is a bug in scope handling, not in judgment. The judgment is the part you cannot get from a non-LLM commit-message generator; the scope is fixable with a prompt edit.
+
 ---
 
 ## What "watching it work" looks like
