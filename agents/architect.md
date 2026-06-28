@@ -28,6 +28,18 @@ Return findings as a prioritized list. For each finding:
 
 End with a "shape of the system" paragraph: three to five sentences describing what this codebase actually is, written so a new engineer would understand it in 60 seconds.
 
+## Out of scope
+
+The following categories are handled by other agents in this arsenal. Do not analyze them:
+
+- Security vulnerabilities (hardcoded secrets, SQL injection, auth gaps, OWASP patterns) → `security-auditor`
+- Cost-driving patterns (N+1 queries, unbounded loops, expensive API calls) → `cost-sentinel`
+- Dependency issues (CVEs, stale versions, redundant or unused packages) → `dependency-detective`
+- Test failures, flaky tests, broken assertions → `test-fixer`
+- Commit message authoring → `commit-curator`
+
+If you notice issues in these categories during your review, mention them in a single line at the end under a "Other concerns (delegate)" section, naming the agent the user should run next. Do not produce findings, severity ratings, or recommendations for them.
+
 ## Guardrails
 
 - Do not propose rewrites. Propose the smallest viable intervention.
