@@ -33,6 +33,17 @@ Then paste these prompts in order:
 > use the cost-sentinel on this codebase
 > use the test-fixer on tests/test_billing.py::test_apply_discount_ten_percent_applied_to_subtotal_only
 > use the dependency-detective on requirements.txt
+```
+
+The `test-fixer` will modify `src/billing.py`. Before invoking the last agent, switch to a terminal and stage that change so the curator has something to read:
+
+```bash
+git add src/billing.py
+```
+
+Then back in Claude Code:
+
+```
 > use the commit-curator on my staged changes
 ```
 
