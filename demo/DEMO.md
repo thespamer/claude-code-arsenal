@@ -4,16 +4,57 @@ This walkthrough uses the small flawed FastAPI project under `demo/pyorders/`.
 It is intentionally seeded with one or more issues per agent so you can run
 each agent and see a real finding.
 
-## Setup (one minute)
+---
+
+## TL;DR — happy path in 5 minutes
+
+If you just want to see the agents run, do this:
+
+```bash
+# 1. From the repository root, run the setup script.
+#    Installs the six subagents to ~/.claude/agents/,
+#    creates a venv with all test dependencies (pytest, fastapi,
+#    pyjwt, psycopg2-binary, requests), and inits git inside the
+#    demo project.
+./demo/run-demo.sh setup
+
+# 2. Print the ordered list of prompts to paste into Claude Code.
+./demo/run-demo.sh prompts
+
+# 3. Open Claude Code inside the demo project.
+cd demo/pyorders
+claude
+```
+
+Inside Claude Code, paste each of the prompts printed by `run-demo.sh prompts` in order, waiting for one to finish before pasting the next. Total time: ~10 minutes for all six agents.
+
+The rest of this document is the deep dive: what each agent finds, why it matters, and what real runs produced. Use the agent sections below as reference while you go through the prompts.
+
+---
+
+## Setup details (if you skipped the TL;DR)
+
+The `run-demo.sh setup` script is the canonical path because it gets four things right that the demo depends on downstream:
+
+- Installs subagents user-level so they show up under `/agents` inside Claude Code
+- Creates a `.venv` and installs all four runtime deps the demo code imports (`pytest`, `fastapi`, `pyjwt`, `psycopg2-binary`, `requests`) — missing any of these makes pytest fail at collection time before any test runs
+- Initializes git inside `demo/pyorders/` so the `commit-curator` has a real repository to read staged changes from
+- Verifies the failing test fails before you start (sanity check that the seeded bug is in place)
+
+If you prefer to set up manually, mirror what the script does:
 
 ```bash
 # From the root of claude-code-arsenal
 mkdir -p ~/.claude/agents
 cp agents/*.md ~/.claude/agents/
 
-# Open Claude Code in the demo project
 cd demo/pyorders
-claude
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pytest fastapi pyjwt psycopg2-binary requests
+git init && git add . && git commit -m "chore: initial demo skeleton"
+pytest tests/ -v   # confirm 1 failed, 1 passed
+claude             # open Claude Code in this directory
 ```
 
 Inside Claude Code, confirm the agents loaded:
@@ -32,13 +73,13 @@ demo/pyorders/
 ├── src/
 │   ├── app.py                # FastAPI handlers with layering issues + SQL injection
 │   ├── auth.py               # hardcoded JWT secret, hardcoded API key, JWT not verified
-│   ├── db.py                 # N+1 query pattern
+│   ├── db.py                 # N+1 query pattern + SQL injection in 2 places
 │   └── billing.py            # N+1 external API + real discount bug
 └── tests/
     └── test_billing.py       # one passing test, one failing test (catches the bug)
 ```
 
-Total surface area: about 130 lines of Python. Small enough to read in two minutes, broken enough to give every agent something real to do.
+Total surface area: about 130 lines of Python. Small enough to read in two minutes, broken enough to give every agent something real to do. The full list of seeded issues with `file:line` references lives in [`pyorders/README.md`](pyorders/README.md).
 
 ---
 
@@ -106,7 +147,7 @@ Two things worth noting in that screenshot:
 **What it finds:**
 
 - `src/auth.py:5` — JWT_SECRET hardcoded.
-- `src/auth.py:8` — payment API key hardcoded (`sk_live_...` prefix matches a common pattern).
+- `src/auth.py:8` — `PAYMENT_API_KEY` hardcoded in source. The literal value is an explicit placeholder (`"Your_token_from_istripe_HERE"`) — it would not work against a real provider, but it is still detected by the agent's regex because the variable name matches the credentials pattern.
 - `src/auth.py:14` — `jwt.decode(..., options={"verify_signature": False})`. Tokens accepted without signature verification.
 - `src/app.py:13` — `DB_URL` contains the password in source.
 - `src/app.py:21, 30, 41` — SQL injection via f-string interpolation in three places.
@@ -216,11 +257,14 @@ This was the cleanest agent output in the demo. Three things worth calling out:
 
 ## 4. test-fixer
 
-First run the test suite to see the failure:
+First run the test suite to see the failure. If you followed the TL;DR setup, the venv is already active and dependencies are installed; just run pytest. Otherwise, install all four runtime deps the code actually imports:
 
 ```bash
 cd demo/pyorders
-pip install pytest fastapi pyjwt
+source .venv/bin/activate                                          # if run-demo.sh setup created the venv
+# or, manual setup:
+pip install pytest fastapi pyjwt psycopg2-binary requests          # all four are required
+
 pytest tests/ -v
 ```
 
@@ -335,13 +379,16 @@ Set up a small staging area, then invoke. Two flows shown below.
 
 ### Flow A — clean single-purpose commit
 
+This flow assumes you ran the `test-fixer` in section 4, which leaves `src/billing.py` modified but not committed. If you skipped section 4, apply any small focused change to a single file before continuing.
+
 ```bash
 cd demo/pyorders
-git init && git add .
-git commit -m "chore: initial demo skeleton"
+# Git is already initialized (run-demo.sh setup did it; if you set up manually,
+# you ran `git init && git add . && git commit -m "..."`).
 
-# Now make one focused change:
-# (apply the test-fixer's fix manually, or any small targeted edit)
+# The test-fixer modified src/billing.py with the apply_discount fix.
+# Stage that change:
+git status              # confirm src/billing.py shows as modified
 git add src/billing.py
 ```
 

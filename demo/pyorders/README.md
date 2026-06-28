@@ -9,7 +9,7 @@ This codebase is seeded with one or more issues per agent. The list:
 
 | Issue | File | Caught by |
 |---|---|---|
-| SQL injection via f-string | `src/app.py:21,30,41` | security-auditor |
+| SQL injection via f-string | `src/app.py:21,30,41` and `src/db.py:14,20` | security-auditor |
 | Hardcoded JWT secret | `src/auth.py:5` | security-auditor |
 | Hardcoded payment API key | `src/auth.py:8` | security-auditor |
 | JWT signature verification disabled | `src/auth.py:14` | security-auditor |
