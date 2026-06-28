@@ -1,0 +1,19 @@
+# Web framework in use
+fastapi==0.68.0
+
+# Stale and redundant: two web frameworks in the same project
+flask==0.10.1
+
+# Known vulnerable versions
+requests==2.18.0
+pyyaml==3.13
+django==1.11.29
+
+# JWT library, two majors behind
+pyjwt==1.5.3
+
+# Database driver
+psycopg2-binary==2.7.7
+
+# Declared but never imported anywhere in src/
+numpy==1.16.0
