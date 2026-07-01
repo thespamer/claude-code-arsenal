@@ -1,17 +1,25 @@
 # claude-code-arsenal
 
-Six specialized Claude Code subagents for daily engineering work. Each one is read-only by default unless the job requires write access, and each one has a sharp scope so the main session can delegate without losing context.
+Six specialized Claude Code subagents for daily engineering work. Each one has a sharp scope so the main session can delegate without losing context, and each one declares the minimum tools it needs so what runs matches what the manifest promises.
 
 ## The six
 
-| Agent | Job | Tools | Model | Read/Write |
-|---|---|---|---|---|
-| `architect` | Map the codebase, surface boundary violations, propose ADRs | Read, Grep, Glob | sonnet | Read-only |
-| `security-auditor` | Sweep for secrets, IAM, OWASP patterns, vulnerable deps | Read, Grep, Glob, Bash | sonnet | Read-only |
-| `cost-sentinel` | Flag patterns that become expensive at production scale | Read, Grep, Glob | sonnet | Read-only |
-| `test-fixer` | Diagnose and repair failing tests with the minimal change | Read, Edit, Bash, Grep, Glob | sonnet | Read-write |
-| `dependency-detective` | Audit dependencies for vulns, staleness, redundancy, licenses | Read, Grep, Glob, Bash | sonnet | Read-only |
-| `commit-curator` | Draft a Conventional Commits message from staged changes | Read, Bash | haiku | Read-only |
+The permission columns below reflect the `tools:` field in each agent's YAML frontmatter. That frontmatter is the enforceable source of truth — Claude Code only grants an agent the tools it declares. This table is generated to match; a CI check (`tools/verify-manifest.sh`) fails if it ever drifts.
+
+| Agent | Job | FS writes | Shell exec | Network | Model |
+|---|---|---|---|---|---|
+| `architect` | Map the codebase, surface boundary violations, propose ADRs | No | No | No | sonnet |
+| `security-auditor` | Sweep for secrets, IAM, OWASP patterns | No | Yes (grep, scanners) | No | sonnet |
+| `cost-sentinel` | Flag patterns that become expensive at production scale | No | No | No | sonnet |
+| `test-fixer` | Diagnose and repair failing tests with the minimal change | Yes | Yes (pytest, etc.) | No | sonnet |
+| `dependency-detective` | Audit dependencies for vulns, staleness, redundancy, licenses | No | Yes (pip-audit, npm audit) | No | sonnet |
+| `commit-curator` | Draft a Conventional Commits message from staged changes | No | Yes (git only) | No | haiku |
+
+**FS writes** = the agent's `tools:` list includes `Write` or `Edit`.
+**Shell exec** = the agent's `tools:` list includes `Bash`.
+**Network** = the agent's `tools:` list includes `WebFetch` or `WebSearch`.
+
+Only `test-fixer` can modify files. The three agents with shell access need it to run tools they cannot substitute (grep, git, pytest, package auditors); none of the three can write to the filesystem or reach the network.
 
 ## See it work in 5 minutes
 
@@ -101,9 +109,9 @@ The `commit-curator` is the one you will invoke most often. The others fire when
 
 ## Design principles
 
-- **Read-only by default.** Four of six cannot write to the filesystem. They report findings; humans take action.
-- **One agent, one job.** No agent crosses categories. If a job needs three perspectives, run three agents.
-- **Minimal blast radius.** `test-fixer` is the only one that edits code, and it refuses to touch more than three files.
+- **Manifest is the source of truth.** What an agent can do is determined by the `tools:` field in its YAML frontmatter, not by prose in the README. The README table is derived from the frontmatter and enforced by `tools/verify-manifest.sh` — if they ever drift, CI fails. Labels like "read-only" alone are not enforcement, they are documentation; the frontmatter is enforcement.
+- **Minimal filesystem writes.** Five of six agents cannot write to the filesystem (no `Write` or `Edit` in their `tools:` list). They report findings; humans take action. Only `test-fixer` edits code, and it refuses to touch more than three files.
+- **One agent, one job.** No agent crosses categories. Each has an "Out of scope" section naming which peer agent handles adjacent concerns. If a job needs three perspectives, run three agents.
 - **No fabricated findings.** Every output points at a file and a line. CVE numbers, version numbers, and dollar figures come from real tools or are flagged as estimates with stated assumptions.
 - **Honest stop conditions.** If the codebase is too small, the diff is empty, or the change is too large, the agent stops instead of guessing.
 
@@ -112,15 +120,22 @@ The `commit-curator` is the one you will invoke most often. The others fire when
 ```
 claude-code-arsenal/
 ├── README.md
+├── CHANGELOG.md
 ├── LICENSE
 ├── PUBLISH.md
 ├── agents/
+│   ├── AGENT-CONVENTIONS.md    # shared guardrails, inherited by all six
 │   ├── architect.md
 │   ├── commit-curator.md
 │   ├── cost-sentinel.md
 │   ├── dependency-detective.md
 │   ├── security-auditor.md
 │   └── test-fixer.md
+├── tools/
+│   └── verify-manifest.sh      # checks README table ↔ tools: frontmatter agreement
+├── .github/
+│   └── workflows/
+│       └── verify-manifest.yml # runs the check on push/PR to agents/ or README
 └── demo/
     ├── DEMO.md                 # full walkthrough with expected outputs
     ├── run-demo.sh             # setup script + prompt list
@@ -131,6 +146,8 @@ claude-code-arsenal/
         ├── src/
         └── tests/
 ```
+
+See [`CHANGELOG.md`](CHANGELOG.md) for release history and attribution of each fix.
 
 ## Contributing
 

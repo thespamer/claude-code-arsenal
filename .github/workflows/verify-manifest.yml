@@ -1,0 +1,25 @@
+name: verify-manifest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - 'README.md'
+      - 'tools/verify-manifest.sh'
+  pull_request:
+    paths:
+      - 'agents/**'
+      - 'README.md'
+      - 'tools/verify-manifest.sh'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run verify-manifest.sh
+        run: |
+          chmod +x tools/verify-manifest.sh
+          tools/verify-manifest.sh
